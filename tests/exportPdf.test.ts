@@ -47,6 +47,29 @@ describe("PDF export", () => {
     expect(exported.getPageCount()).toBe(1);
   });
 
+  it("exports a visible signature annotation", async () => {
+    const session = await makeSession();
+    session.annotations.push({
+      id: "signature",
+      kind: "signature",
+      pageIndex: 0,
+      rect: { x: 40, y: 80, width: 120, height: 48 },
+      color: "ink",
+      imageDataUrl:
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l8t6VwAAAABJRU5ErkJggg==",
+      signatureAsset: {
+        assetId: "asset-1",
+        kind: "signature",
+        mode: "typed",
+        label: "Signature"
+      }
+    });
+
+    const bytes = await exportPdf(session);
+    const exported = await PDFDocument.load(bytes);
+    expect(exported.getPageCount()).toBe(2);
+  });
+
   it("persists text and checkbox form edits", async () => {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([300, 300]);

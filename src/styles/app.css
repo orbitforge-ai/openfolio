@@ -496,6 +496,126 @@ textarea {
   background: #ffffff;
 }
 
+.signature-panel,
+.signature-asset-list,
+.draw-signature {
+  display: grid;
+  gap: 10px;
+}
+
+.signature-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.signature-kind-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.signature-kind-tabs button.active {
+  border-color: #2b6eea;
+  background: #e8f0ff;
+  color: #154fb3;
+}
+
+.typed-signature-preview {
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid #d6dde5;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #111827;
+  font-size: 30px;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.draw-signature > span {
+  color: #475569;
+  font-size: 12px;
+}
+
+.draw-signature canvas {
+  width: 100%;
+  height: 112px;
+  border: 1px solid #c8d0d9;
+  border-radius: 7px;
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(100, 116, 139, 0.16) 32px) border-box;
+  touch-action: none;
+}
+
+.signature-security-note {
+  padding: 8px;
+  border: 1px solid #d6dde5;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.signature-asset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.signature-asset.active .signature-asset-select {
+  border-color: #2b6eea;
+  background: #e8f0ff;
+}
+
+.signature-asset-select {
+  min-height: 64px;
+  justify-content: flex-start;
+  padding: 6px;
+  text-align: left;
+  overflow: hidden;
+}
+
+.signature-asset-select img {
+  width: 72px;
+  height: 44px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  border: 1px solid #d6dde5;
+  border-radius: 5px;
+  background: #ffffff;
+}
+
+.signature-asset-select span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.signature-asset-select strong,
+.signature-asset-select small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signature-asset-select strong {
+  font-size: 13px;
+}
+
+.signature-asset-select small {
+  color: #657282;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.icon-button {
+  min-width: 34px;
+  padding: 0;
+}
+
 @media (max-width: 980px) {
   .workspace {
     grid-template-columns: 220px minmax(0, 1fr);

@@ -585,6 +585,230 @@ function App() {
 const PAGE_GAP = 28;
 const VIRTUAL_OVERSCAN = 2;
 
+function SignaturePanel({
+  assets,
+  selectedAssetId,
+  onSelectAsset,
+  onDeleteAsset,
+  onImport,
+  onCreateAsset
+}: {
+  assets: SignatureAsset[];
+  selectedAssetId: string;
+  onSelectAsset: (assetId: string) => void;
+  onDeleteAsset: (assetId: string) => void;
+  onImport: () => void;
+  onCreateAsset: (asset: SignatureAsset) => void;
+}) {
+  const [assetKind, setAssetKind] = useState<SignatureAssetKind>("signature");
+  const [typedText, setTypedText] = useState("");
+  const [fontFamily, setFontFamily] = useState(signatureFonts[0].value);
+  const selectedFont = signatureFonts.find((font) => font.value === fontFamily) ?? signatureFonts[0];
+  const dateStamp = defaultDateStamp();
+
+  function createTypedAsset(kind: SignatureAssetKind) {
+    const text = kind === "date" ? dateStamp : typedText.trim();
+    if (!text) return;
+    const rendered = renderTypedSignatureDataUrl(text, { kind, fontFamily });
+    onCreateAsset(
+      createSignatureAsset({
+        kind,
+        mode: "typed",
+        label: kind === "date" ? `Date ${text}` : `${defaultSignatureLabel(kind)} - ${text}`,
+        text,
+        fontFamily,
+        ...rendered
+      })
+    );
+    if (kind !== "date") setTypedText("");
+  }
+
+  return (
+    <div className="signature-panel">
+      <div className="signature-actions">
+        <button onClick={onImport} title="Import signature image">
+          <Upload size={16} />
+          Import
+        </button>
+        <button onClick={() => createTypedAsset("date")} title="Create today's date stamp">
+          <CalendarDays size={16} />
+          Date
+        </button>
+      </div>
+
+      <div className="signature-kind-tabs" role="group" aria-label="Signature type">
+        {(["signature", "initials"] as const).map((kind) => (
+          <button key={kind} className={assetKind === kind ? "active" : ""} onClick={() => setAssetKind(kind)}>
+            {kind === "signature" ? "Signature" : "Initials"}
+          </button>
+        ))}
+      </div>
+
+      <label className="form-field">
+        <span>{assetKind === "signature" ? "Typed signature" : "Typed initials"}</span>
+        <input
+          value={typedText}
+          onChange={(event) => setTypedText(event.target.value)}
+          placeholder={assetKind === "signature" ? "Full name" : "AB"}
+        />
+      </label>
+      <label className="form-field">
+        <span>Style</span>
+        <select value={fontFamily} onChange={(event) => setFontFamily(event.target.value)}>
+          {signatureFonts.map((font) => (
+            <option key={font.value} value={font.value}>
+              {font.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button disabled={!typedText.trim()} onClick={() => createTypedAsset(assetKind)}>
+        <Type size={16} />
+        Save Typed
+      </button>
+      {typedText.trim() && (
+        <div className="typed-signature-preview" style={{ fontFamily: selectedFont.value }}>
+          {typedText}
+        </div>
+      )}
+
+      <DrawSignatureCreator kind={assetKind} onCreateAsset={onCreateAsset} />
+
+      <p className="muted signature-security-note">
+        Visible stamps only. These exports do not add certificate, DocuSign, or Acrobat digital signature security.
+      </p>
+
+      <div className="signature-asset-list">
+        {assets.length === 0 ? (
+          <p className="muted">Create or import a signature, initials, or date stamp.</p>
+        ) : (
+          assets.map((asset) => (
+            <div key={asset.id} className={asset.id === selectedAssetId ? "signature-asset active" : "signature-asset"}>
+              <button className="signature-asset-select" onClick={() => onSelectAsset(asset.id)} title={`Use ${asset.label}`}>
+                <img src={asset.imageDataUrl} alt={asset.label} />
+                <span>
+                  <strong>{asset.label}</strong>
+                  <small>
+                    {asset.kind} / {asset.mode}
+                  </small>
+                </span>
+              </button>
+              <button className="icon-button" onClick={() => onDeleteAsset(asset.id)} title={`Delete ${asset.label}`}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <p className="muted">Select the Signature tool and click the page to place the active stamp.</p>
+    </div>
+  );
+}
+
+function DrawSignatureCreator({
+  kind,
+  onCreateAsset
+}: {
+  kind: SignatureAssetKind;
+  onCreateAsset: (asset: SignatureAsset) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [hasInk, setHasInk] = useState(false);
+
+  useEffect(() => {
+    clearDrawing();
+  }, [kind]);
+
+  function canvasPoint(event: PointerEvent<HTMLCanvasElement>): Point {
+    const canvas = canvasRef.current!;
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * canvas.height
+    };
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = canvasPoint(event);
+    context.strokeStyle = "#111827";
+    context.lineWidth = kind === "initials" ? 5 : 4;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    setDrawing(true);
+  }
+
+  function onPointerMove(event: PointerEvent<HTMLCanvasElement>) {
+    if (!drawing) return;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    const point = canvasPoint(event);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    setHasInk(true);
+  }
+
+  function onPointerUp() {
+    setDrawing(false);
+  }
+
+  function clearDrawing() {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    setHasInk(false);
+  }
+
+  function saveDrawing() {
+    const canvas = canvasRef.current;
+    if (!canvas || !transparentCanvasHasInk(canvas)) return;
+    onCreateAsset(
+      createSignatureAsset({
+        kind,
+        mode: "drawn",
+        label: `Drawn ${defaultSignatureLabel(kind).toLowerCase()}`,
+        imageDataUrl: canvas.toDataURL("image/png"),
+        width: canvas.width,
+        height: canvas.height
+      })
+    );
+    clearDrawing();
+  }
+
+  return (
+    <div className="draw-signature">
+      <span>Draw {kind === "signature" ? "signature" : "initials"}</span>
+      <canvas
+        ref={canvasRef}
+        width={420}
+        height={160}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      />
+      <div className="signature-actions">
+        <button disabled={!hasInk} onClick={saveDrawing}>
+          <PenLine size={16} />
+          Save Drawn
+        </button>
+        <button disabled={!hasInk} onClick={clearDrawing}>
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function VirtualizedDocument({
   session,
   pdfDoc,
