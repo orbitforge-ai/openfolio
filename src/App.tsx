@@ -181,7 +181,7 @@ function App() {
 
   async function openDemoPdf() {
     const bytes = await createDemoPdf();
-    await createSession("PDF Forge Demo.pdf", bytes);
+    await createSession("Openfolio Demo.pdf", bytes);
   }
 
   function updateSession(updater: (session: DocumentSession) => DocumentSession) {
@@ -327,7 +327,7 @@ function App() {
         <div className="brand">
           <FilePlus2 size={24} />
           <div>
-            <strong>PDF Forge</strong>
+            <strong>Openfolio</strong>
             <span>{session ? `${session.name}${session.dirty ? " • unsaved" : ""}` : "Fill, sign, organize, export"}</span>
           </div>
         </div>

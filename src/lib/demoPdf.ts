@@ -7,7 +7,7 @@ export async function createDemoPdf(): Promise<Uint8Array> {
   const form = pdf.getForm();
 
   const page1 = pdf.addPage([612, 792]);
-  page1.drawText("PDF Forge Demo Form", { x: 54, y: 724, size: 24, font: bold, color: rgb(0.08, 0.12, 0.18) });
+  page1.drawText("Openfolio Demo Form", { x: 54, y: 724, size: 24, font: bold, color: rgb(0.08, 0.12, 0.18) });
   page1.drawText("Use this sample to test fill, sign, annotate, search, split, and page tools.", {
     x: 54,
     y: 692,

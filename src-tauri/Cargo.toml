@@ -1,12 +1,12 @@
 [package]
-name = "pdf-viewer-editor"
+name = "openfolio"
 version = "0.1.0"
 description = "A cross-platform PDF fill, sign, organize, and export app."
-authors = ["PDF Forge"]
+authors = ["Openfolio"]
 edition = "2021"
 
 [lib]
-name = "pdf_viewer_editor_lib"
+name = "openfolio_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

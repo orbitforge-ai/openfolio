@@ -1,7 +1,8 @@
 import type { SignatureAsset, SignatureAssetKind, SignatureAssetMode } from "../types";
 import { createId } from "./id";
 
-const SIGNATURE_STORAGE_KEY = "pdf-forge.signature-assets.v1";
+const SIGNATURE_STORAGE_KEY = "openfolio.signature-assets.v1";
+const LEGACY_SIGNATURE_STORAGE_KEY = "pdf-forge.signature-assets.v1";
 
 export const signatureFonts = [
   { label: "Script", value: "Brush Script MT, Snell Roundhand, cursive" },
@@ -57,7 +58,7 @@ export function loadSignatureAssets(storage = defaultStorage()): SignatureAsset[
   if (!storage) return [];
 
   try {
-    const raw = storage.getItem(SIGNATURE_STORAGE_KEY);
+    const raw = storage.getItem(SIGNATURE_STORAGE_KEY) ?? storage.getItem(LEGACY_SIGNATURE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];

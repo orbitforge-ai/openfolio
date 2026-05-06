@@ -54,6 +54,60 @@ describe("signature assets", () => {
 
     saveSignatureAssets(assets, storage);
     expect(loadSignatureAssets(storage)).toEqual(assets);
+    expect(storage.getItem("openfolio.signature-assets.v1")).toBe(JSON.stringify(assets));
+  });
+
+  it("loads assets from the legacy PDF Forge storage key", () => {
+    const storage = new MemoryStorage();
+    const assets: SignatureAsset[] = [
+      {
+        id: "legacy-asset",
+        label: "Legacy signature",
+        kind: "signature",
+        mode: "imported",
+        imageDataUrl,
+        width: 420,
+        height: 160,
+        createdAt: "2026-05-05T00:00:00.000Z"
+      }
+    ];
+
+    storage.setItem("pdf-forge.signature-assets.v1", JSON.stringify(assets));
+
+    expect(loadSignatureAssets(storage)).toEqual(assets);
+  });
+
+  it("prefers Openfolio signature storage over the legacy key", () => {
+    const storage = new MemoryStorage();
+    const openfolioAssets: SignatureAsset[] = [
+      {
+        id: "openfolio-asset",
+        label: "Openfolio signature",
+        kind: "signature",
+        mode: "imported",
+        imageDataUrl,
+        width: 420,
+        height: 160,
+        createdAt: "2026-05-05T00:00:00.000Z"
+      }
+    ];
+    const legacyAssets: SignatureAsset[] = [
+      {
+        id: "legacy-asset",
+        label: "Legacy signature",
+        kind: "signature",
+        mode: "imported",
+        imageDataUrl,
+        width: 420,
+        height: 160,
+        createdAt: "2026-05-05T00:00:00.000Z"
+      }
+    ];
+
+    storage.setItem("openfolio.signature-assets.v1", JSON.stringify(openfolioAssets));
+    storage.setItem("pdf-forge.signature-assets.v1", JSON.stringify(legacyAssets));
+
+    expect(loadSignatureAssets(storage)).toEqual(openfolioAssets);
   });
 
   it("drops malformed stored assets", () => {

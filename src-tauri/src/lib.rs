@@ -69,16 +69,36 @@ fn set_recent_file(path: String, name: String) -> Result<(), String> {
 }
 
 fn recent_path() -> io::Result<PathBuf> {
+    let path = recent_path_for_app("Openfolio")?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    Ok(path)
+}
+
+fn legacy_recent_path() -> io::Result<PathBuf> {
+    recent_path_for_app("PDF Forge")
+}
+
+fn recent_path_for_app(app_name: &str) -> io::Result<PathBuf> {
     let base = dirs::data_dir()
         .or_else(dirs::home_dir)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No data directory available"))?;
-    let dir = base.join("PDF Forge");
-    fs::create_dir_all(&dir)?;
-    Ok(dir.join("recent.json"))
+    Ok(base.join(app_name).join("recent.json"))
 }
 
 fn read_recent_files() -> io::Result<Vec<RecentFile>> {
     let path = recent_path()?;
+    let path = if path.exists() {
+        path
+    } else {
+        let legacy_path = legacy_recent_path()?;
+        if !legacy_path.exists() {
+            return Ok(Vec::new());
+        }
+        legacy_path
+    };
+
     if !path.exists() {
         return Ok(Vec::new());
     }
