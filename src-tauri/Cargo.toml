@@ -1,0 +1,20 @@
+[package]
+name = "pdf-viewer-editor"
+version = "0.1.0"
+description = "A cross-platform PDF fill, sign, organize, and export app."
+authors = ["PDF Forge"]
+edition = "2021"
+
+[lib]
+name = "pdf_viewer_editor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.1.0", features = [] }
+
+[dependencies]
+dirs = "5.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2.2.0", features = [] }
+tauri-plugin-dialog = "2.2.0"
