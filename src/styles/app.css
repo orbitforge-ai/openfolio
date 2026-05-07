@@ -88,8 +88,7 @@ textarea {
 }
 
 .brand span,
-.muted,
-.status p {
+.muted {
   color: #657282;
   font-size: 13px;
 }
@@ -102,7 +101,11 @@ textarea {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr) 300px;
+  grid-template-columns: 290px minmax(0, 1fr);
+}
+
+.workspace.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .toast-status {
@@ -120,18 +123,12 @@ textarea {
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.13);
 }
 
-.left-panel,
-.right-panel {
+.left-panel {
   min-height: 0;
   overflow: auto;
   background: #f8fafc;
   border-right: 1px solid #cbd4dd;
   padding: 14px;
-}
-
-.right-panel {
-  border-right: 0;
-  border-left: 1px solid #cbd4dd;
 }
 
 .panel-section {
@@ -163,15 +160,8 @@ textarea {
   color: #154fb3;
 }
 
-.compact-field {
-  display: grid;
-  gap: 5px;
-  margin-top: 10px;
-}
-
-.compact-field span {
-  color: #657282;
-  font-size: 12px;
+.tool-options {
+  padding-top: 2px;
 }
 
 .page-actions,
@@ -438,31 +428,6 @@ textarea {
   gap: 10px;
 }
 
-.search-results {
-  display: grid;
-  gap: 8px;
-}
-
-.search-results button {
-  display: grid;
-  justify-items: start;
-  gap: 3px;
-  min-height: 58px;
-  padding: 8px;
-  text-align: left;
-}
-
-.search-results strong {
-  color: #1f4fbf;
-  font-size: 13px;
-}
-
-.search-results span {
-  color: #5f6f82;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
 .form-field {
   display: grid;
   gap: 5px;
@@ -619,9 +584,5 @@ textarea {
 @media (max-width: 980px) {
   .workspace {
     grid-template-columns: 220px minmax(0, 1fr);
-  }
-
-  .right-panel {
-    display: none;
   }
 }

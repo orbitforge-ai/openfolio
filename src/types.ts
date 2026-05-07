@@ -82,6 +82,14 @@ export interface DocumentSession {
   formEdits: Record<string, FormEdit>;
 }
 
+export interface DocumentHistorySnapshot {
+  pages: PageState[];
+  selectedPage: number;
+  dirty: boolean;
+  annotations: PdfAnnotation[];
+  formEdits: Record<string, FormEdit>;
+}
+
 export interface PdfFormFieldSummary {
   name: string;
   type: FormEdit["type"];

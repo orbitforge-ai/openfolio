@@ -3,6 +3,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Copy,
   Download,
   FilePlus2,
@@ -12,6 +14,7 @@ import {
   MousePointer2,
   PenLine,
   Plus,
+  Redo2,
   RotateCw,
   Save,
   Scissors,
@@ -21,6 +24,7 @@ import {
   Type,
   TextCursorInput,
   Trash2,
+  Undo2,
   Upload,
   ZoomIn,
   ZoomOut
@@ -39,6 +43,12 @@ import type {
   Tool
 } from "./types";
 import { createDemoPdf } from "./lib/demoPdf";
+import {
+  applyDocumentEdit,
+  emptyDocumentHistory,
+  redoDocumentEdit,
+  undoDocumentEdit
+} from "./lib/documentHistory";
 import { createId } from "./lib/id";
 import { deletePage, duplicatePage, movePage, rotatePage, visiblePages } from "./lib/pageOperations";
 import { exportPdf, exportSplitPdf } from "./lib/exportPdf";
@@ -70,7 +80,9 @@ const tools: Array<{ id: Tool; label: string; icon: typeof MousePointer2 }> = [
 function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const signatureInputRef = useRef<HTMLInputElement>(null);
+  const documentHistoryRef = useRef(emptyDocumentHistory());
   const [session, setSession] = useState<DocumentSession | null>(null);
+  const [documentHistory, setDocumentHistoryState] = useState(() => documentHistoryRef.current);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [fields, setFields] = useState<PdfFormFieldSummary[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
@@ -83,6 +95,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ pageIndex: number; snippets: string[] }>>([]);
   const [annotationText, setAnnotationText] = useState("Approved");
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
 
   useEffect(() => {
     getRecentFiles().then(setRecentFiles).catch(() => setRecentFiles([]));
@@ -128,6 +141,8 @@ function App() {
     [signatureAssets, selectedSignatureAssetId]
   );
   const visiblePageList = useMemo(() => (session ? visiblePages(session.pages) : []), [session?.pages]);
+  const canUndo = documentHistory.undo.length > 0;
+  const canRedo = documentHistory.redo.length > 0;
   const currentVisibleIndex = useMemo(() => {
     if (!session || !selectedPageState) return 0;
     return visiblePageList.findIndex((page) => page === selectedPageState);
@@ -162,6 +177,7 @@ function App() {
 
   async function createSession(name: string, bytes: Uint8Array, path?: string) {
     const doc = await loadPdfDocument(bytes);
+    replaceDocumentHistory(emptyDocumentHistory());
     setSession({
       id: createId("session"),
       path,
@@ -188,13 +204,72 @@ function App() {
     setSession((current) => (current ? updater(current) : current));
   }
 
+  function replaceDocumentHistory(nextHistory: typeof documentHistoryRef.current) {
+    documentHistoryRef.current = nextHistory;
+    setDocumentHistoryState(nextHistory);
+  }
+
+  const updateDocumentSession = useCallback((updater: (session: DocumentSession) => DocumentSession) => {
+    setSession((current) => {
+      if (!current) return current;
+      const result = applyDocumentEdit(current, documentHistoryRef.current, updater);
+      if (result.history !== documentHistoryRef.current) replaceDocumentHistory(result.history);
+      return result.session;
+    });
+  }, []);
+
+  const undoDocumentChange = useCallback(() => {
+    setSession((current) => {
+      if (!current) return current;
+      const result = undoDocumentEdit(current, documentHistoryRef.current);
+      if (result.history !== documentHistoryRef.current) replaceDocumentHistory(result.history);
+      return result.session;
+    });
+  }, []);
+
+  const redoDocumentChange = useCallback(() => {
+    setSession((current) => {
+      if (!current) return current;
+      const result = redoDocumentEdit(current, documentHistoryRef.current);
+      if (result.history !== documentHistoryRef.current) replaceDocumentHistory(result.history);
+      return result.session;
+    });
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (isEditableShortcutTarget(event.target)) return;
+      const key = event.key.toLowerCase();
+      const hasCommandModifier = event.metaKey || event.ctrlKey;
+      if (!hasCommandModifier) return;
+
+      const wantsUndo = key === "z" && !event.shiftKey;
+      const wantsRedo = (key === "z" && event.shiftKey) || (key === "y" && event.ctrlKey && !event.metaKey);
+      if (!wantsUndo && !wantsRedo) return;
+
+      event.preventDefault();
+      if (wantsUndo) {
+        undoDocumentChange();
+      } else {
+        redoDocumentChange();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [redoDocumentChange, undoDocumentChange]);
+
   function markPages(pages: DocumentSession["pages"], selectedPage?: number) {
+    if (!session) return;
     const targetPage = selectedPage ?? session?.selectedPage ?? 0;
     const safeSelected = pages[targetPage]?.deleted ? pages.findIndex((page) => !page.deleted) : targetPage;
-    updateSession((current) => ({
+    const nextSelectedPage = Math.max(0, Math.min(safeSelected, pages.length - 1));
+    if (pagesEqual(session.pages, pages) && session.selectedPage === nextSelectedPage) return;
+
+    updateDocumentSession((current) => ({
       ...current,
       pages,
-      selectedPage: Math.max(0, Math.min(safeSelected, pages.length - 1)),
+      selectedPage: nextSelectedPage,
       dirty: true
     }));
   }
@@ -272,7 +347,7 @@ function App() {
   }
 
   function updateFormField(field: PdfFormFieldSummary, value: FormEdit["value"]) {
-    updateSession((current) => ({
+    updateDocumentSession((current) => ({
       ...current,
       dirty: true,
       formEdits: {
@@ -356,7 +431,8 @@ function App() {
         {status}
       </div>
 
-      <section className="workspace">
+      <section className={leftSidebarOpen ? "workspace" : "workspace sidebar-collapsed"}>
+        {leftSidebarOpen && (
         <aside className="left-panel">
           <div className="panel-section">
             <h2>Tools</h2>
@@ -368,11 +444,22 @@ function App() {
                 </button>
               ))}
             </div>
-            <label className="compact-field">
-              <span>Text / note</span>
-              <input value={annotationText} onChange={(event) => setAnnotationText(event.target.value)} />
-            </label>
           </div>
+
+          <ToolOptionsPanel
+            tool={tool}
+            fields={fields}
+            formEdits={session?.formEdits ?? {}}
+            annotationText={annotationText}
+            selectedSignatureAssetId={selectedSignatureAsset?.id ?? ""}
+            signatureAssets={signatureAssets}
+            onAnnotationTextChange={setAnnotationText}
+            onFormChange={updateFormField}
+            onSelectSignatureAsset={setSelectedSignatureAssetId}
+            onDeleteSignatureAsset={deleteSignatureAsset}
+            onImportSignature={() => signatureInputRef.current?.click()}
+            onCreateSignatureAsset={addSignatureAsset}
+          />
 
           <div className="panel-section">
             <h2>Pages</h2>
@@ -420,15 +507,32 @@ function App() {
             </div>
           </div>
         </aside>
+        )}
 
         <section className="document-stage">
           <div className="stage-toolbar">
+            <button
+              className="icon-button"
+              onClick={() => setLeftSidebarOpen((open) => !open)}
+              title={leftSidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+              aria-label={leftSidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+            >
+              {leftSidebarOpen ? <ChevronsLeft size={17} /> : <ChevronsRight size={17} />}
+            </button>
+            <div className="separator" />
             <button disabled={!session || currentVisibleIndex <= 0} onClick={() => selectVisiblePage(-1)} title="Previous page">
               <ChevronLeft size={17} />
             </button>
             <span>{session ? `Page ${currentVisibleIndex + 1} of ${visiblePageList.length}` : "No document"}</span>
             <button disabled={!session || currentVisibleIndex >= visiblePageList.length - 1} onClick={() => selectVisiblePage(1)} title="Next page">
               <ChevronRight size={17} />
+            </button>
+            <div className="separator" />
+            <button disabled={!session || !canUndo} onClick={undoDocumentChange} title="Undo (Cmd/Ctrl+Z)">
+              <Undo2 size={17} />
+            </button>
+            <button disabled={!session || !canRedo} onClick={redoDocumentChange} title="Redo (Cmd/Ctrl+Shift+Z)">
+              <Redo2 size={17} />
             </button>
             <div className="separator" />
             <button disabled={!session} onClick={() => updateSession((current) => ({ ...current, zoom: Math.max(0.5, current.zoom - 0.1) }))}>
@@ -478,7 +582,7 @@ function App() {
                 onNeedSignature={() => setStatus("Create or select a visible signature before placing it.")}
                 onVisiblePageChange={(selectedPage) => updateSession((current) => ({ ...current, selectedPage }))}
                 onAddAnnotation={(annotation) =>
-                  updateSession((current) => ({
+                  updateDocumentSession((current) => ({
                     ...current,
                     dirty: true,
                     annotations: [...current.annotations, annotation]
@@ -511,72 +615,6 @@ function App() {
             )}
           </div>
         </section>
-
-        <aside className="right-panel">
-          <div className="panel-section">
-            <h2>Search</h2>
-            {!searchQuery.trim() ? (
-              <p className="muted">Search text across the open PDF.</p>
-            ) : searchResults.length === 0 ? (
-              <p className="muted">No matches.</p>
-            ) : (
-              <div className="search-results">
-                {searchResults.map((result) => {
-                  const pageIndex = session?.pages.findIndex((page) => page.sourceIndex === result.pageIndex && !page.deleted) ?? -1;
-                  return (
-                    <button
-                      key={result.pageIndex}
-                      disabled={pageIndex < 0}
-                      onClick={() => pageIndex >= 0 && updateSession((current) => ({ ...current, selectedPage: pageIndex }))}
-                    >
-                      <strong>Page {pageIndex + 1}</strong>
-                      <span>{result.snippets[0]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="panel-section">
-            <h2>Text</h2>
-            <label className="form-field">
-              <span>Text and note content</span>
-              <input value={annotationText} onChange={(event) => setAnnotationText(event.target.value)} placeholder="Text to place" />
-            </label>
-            <p className="muted">Select Text or Note, then click the page.</p>
-          </div>
-
-          <div className="panel-section">
-            <h2>Forms</h2>
-            {fields.length === 0 ? (
-              <p className="muted">No supported form fields detected.</p>
-            ) : (
-              <div className="field-list">
-                {fields.map((field) => (
-                  <FormFieldEditor key={field.name} field={field} edit={session?.formEdits[field.name]} onChange={(value) => updateFormField(field, value)} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="panel-section">
-            <h2>Signature</h2>
-            <SignaturePanel
-              assets={signatureAssets}
-              selectedAssetId={selectedSignatureAsset?.id ?? ""}
-              onSelectAsset={setSelectedSignatureAssetId}
-              onDeleteAsset={deleteSignatureAsset}
-              onImport={() => signatureInputRef.current?.click()}
-              onCreateAsset={addSignatureAsset}
-            />
-          </div>
-
-          <div className="panel-section status">
-            <h2>Status</h2>
-            <p>{status}</p>
-          </div>
-        </aside>
       </section>
     </main>
   );
@@ -584,6 +622,94 @@ function App() {
 
 const PAGE_GAP = 28;
 const VIRTUAL_OVERSCAN = 2;
+
+function ToolOptionsPanel({
+  tool,
+  fields,
+  formEdits,
+  annotationText,
+  selectedSignatureAssetId,
+  signatureAssets,
+  onAnnotationTextChange,
+  onFormChange,
+  onSelectSignatureAsset,
+  onDeleteSignatureAsset,
+  onImportSignature,
+  onCreateSignatureAsset
+}: {
+  tool: Tool;
+  fields: PdfFormFieldSummary[];
+  formEdits: Record<string, FormEdit>;
+  annotationText: string;
+  selectedSignatureAssetId: string;
+  signatureAssets: SignatureAsset[];
+  onAnnotationTextChange: (value: string) => void;
+  onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
+  onSelectSignatureAsset: (assetId: string) => void;
+  onDeleteSignatureAsset: (assetId: string) => void;
+  onImportSignature: () => void;
+  onCreateSignatureAsset: (asset: SignatureAsset) => void;
+}) {
+  if (tool === "select") {
+    return (
+      <div className="panel-section tool-options">
+        <h2>Forms</h2>
+        {fields.length === 0 ? (
+          <p className="muted">No supported form fields detected.</p>
+        ) : (
+          <div className="field-list">
+            {fields.map((field) => (
+              <FormFieldEditor key={field.name} field={field} edit={formEdits[field.name]} onChange={(value) => onFormChange(field, value)} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (tool === "text" || tool === "note") {
+    const label = tool === "text" ? "Text content" : "Note content";
+    return (
+      <div className="panel-section tool-options">
+        <h2>{tool === "text" ? "Text" : "Note"}</h2>
+        <label className="form-field">
+          <span>{label}</span>
+          <input value={annotationText} onChange={(event) => onAnnotationTextChange(event.target.value)} placeholder={tool === "text" ? "Text to place" : "Note text"} />
+        </label>
+        <p className="muted">Click the page to place it.</p>
+      </div>
+    );
+  }
+
+  if (tool === "signature") {
+    return (
+      <div className="panel-section tool-options">
+        <h2>Signature</h2>
+        <SignaturePanel
+          assets={signatureAssets}
+          selectedAssetId={selectedSignatureAssetId}
+          onSelectAsset={onSelectSignatureAsset}
+          onDeleteAsset={onDeleteSignatureAsset}
+          onImport={onImportSignature}
+          onCreateAsset={onCreateSignatureAsset}
+        />
+      </div>
+    );
+  }
+
+  const hints: Partial<Record<Tool, string>> = {
+    highlight: "Click the page to add a highlight.",
+    ink: "Drag on the page to draw ink.",
+    rectangle: "Click the page to add a rectangle."
+  };
+
+  return (
+    <div className="panel-section tool-options">
+      <h2>{tools.find((item) => item.id === tool)?.label ?? "Tool"}</h2>
+      <p className="muted">{hints[tool] ?? "Select a tool to see its options."}</p>
+    </div>
+  );
+}
 
 function SignaturePanel({
   assets,
@@ -1349,6 +1475,20 @@ function makeSnippet(text: string, hit: number, length: number): string {
 
 function isRenderCancel(error: unknown): boolean {
   return error instanceof Error && error.name === "RenderingCancelledException";
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+function pagesEqual(left: DocumentSession["pages"], right: DocumentSession["pages"]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((page, index) => {
+    const other = right[index];
+    return other && page.sourceIndex === other.sourceIndex && page.rotation === other.rotation && page.deleted === other.deleted;
+  });
 }
 
 function fitTextWidgetFontSize(text: string, width: number, height: number): number {
