@@ -8,7 +8,7 @@ import {
   degrees,
   rgb
 } from "pdf-lib";
-import type { DocumentSession, PdfAnnotation } from "../types";
+import type { AddedTextField, DocumentSession, PdfAnnotation } from "../types";
 import { visiblePages } from "./pageOperations";
 
 const colorMap: Record<string, [number, number, number]> = {
@@ -25,6 +25,7 @@ export async function exportPdf(session: DocumentSession): Promise<Uint8Array> {
   applyFormEdits(source, session);
 
   if (!hasPageStructureChanges(session)) {
+    applyAddedTextFields(source, session, visiblePages(session.pages));
     await applyAnnotations(source, session);
     return source.save();
   }
@@ -38,6 +39,7 @@ export async function exportPdf(session: DocumentSession): Promise<Uint8Array> {
     output.addPage(copied);
   }
 
+  applyAddedTextFields(output, session, pages);
   await applyAnnotations(output, session);
 
   return output.save();
@@ -79,6 +81,46 @@ function applyFormEdits(pdf: PDFDocument, session: DocumentSession): void {
     } else if (field instanceof PDFOptionList && Array.isArray(edit.value)) {
       field.select(edit.value);
     }
+  }
+
+  form.updateFieldAppearances();
+}
+
+function applyAddedTextFields(
+  pdf: PDFDocument,
+  session: DocumentSession,
+  renderedPages: ReturnType<typeof visiblePages>
+): void {
+  if (session.addedTextFields.length === 0) return;
+
+  const form = pdf.getForm();
+  const outputPages = pdf.getPages();
+
+  for (const addedField of session.addedTextFields) {
+    const outputPageIndex = renderedPages.findIndex((page) => page.sourceIndex === addedField.pageIndex);
+    const page = outputPages[outputPageIndex];
+    if (!page) continue;
+
+    const existingField = form.getFieldMaybe(addedField.name);
+    if (existingField && !(existingField instanceof PDFTextField)) continue;
+
+    const field = existingField instanceof PDFTextField ? existingField : form.createTextField(addedField.name);
+    field.enableMultiline();
+    field.disableScrolling();
+    field.setText(addedField.value);
+
+    const { x, y, width, height } = addedField.rect;
+    field.addToPage(page, {
+      x,
+      y: page.getHeight() - y - height,
+      width,
+      height,
+      textColor: rgb(0.06, 0.09, 0.16),
+      borderColor: rgb(0.15, 0.39, 0.92),
+      backgroundColor: rgb(1, 1, 1),
+      borderWidth: 1
+    });
+    field.setFontSize(fitTextFieldFontSize(addedField));
   }
 
   form.updateFieldAppearances();
@@ -160,4 +202,19 @@ function drawInkPath(page: ReturnType<PDFDocument["getPages"]>[number], annotati
 function asRgb(color: string) {
   const [r, g, b] = colorMap[color] ?? colorMap.ink;
   return rgb(r, g, b);
+}
+
+function fitTextFieldFontSize(field: AddedTextField): number {
+  const normalized = field.value || " ";
+  for (let fontSize = 15; fontSize >= 5; fontSize -= 0.5) {
+    const charsPerLine = Math.max(1, Math.floor((field.rect.width - 8) / (fontSize * 0.52)));
+    const lines = normalized
+      .split(/\n/)
+      .map((line) => Math.max(1, Math.ceil(line.length / charsPerLine)))
+      .reduce((total, lineCount) => total + lineCount, 0);
+
+    if (lines * fontSize * 1.18 <= field.rect.height - 4) return fontSize;
+  }
+
+  return 5;
 }

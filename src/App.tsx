@@ -32,12 +32,14 @@ import {
 import { ChangeEvent, PointerEvent, SyntheticEvent, UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type {
+  AddedTextField,
   DocumentSession,
   FormEdit,
   PdfAnnotation,
   PdfFormFieldSummary,
   PdfFormWidget,
   Point,
+  Rect,
   SignatureAsset,
   SignatureAssetKind,
   Tool
@@ -69,7 +71,8 @@ import {
 
 const tools: Array<{ id: Tool; label: string; icon: typeof MousePointer2 }> = [
   { id: "select", label: "Select", icon: MousePointer2 },
-  { id: "text", label: "Text", icon: TextCursorInput },
+  { id: "input", label: "Input", icon: TextCursorInput },
+  { id: "text", label: "Text", icon: Type },
   { id: "highlight", label: "Highlight", icon: Highlighter },
   { id: "ink", label: "Ink", icon: PenLine },
   { id: "rectangle", label: "Rectangle", icon: Square },
@@ -96,6 +99,7 @@ function App() {
   const [searchResults, setSearchResults] = useState<Array<{ pageIndex: number; snippets: string[] }>>([]);
   const [annotationText, setAnnotationText] = useState("Approved");
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [focusedAddedTextFieldId, setFocusedAddedTextFieldId] = useState<string | null>(null);
 
   useEffect(() => {
     getRecentFiles().then(setRecentFiles).catch(() => setRecentFiles([]));
@@ -189,7 +193,8 @@ function App() {
       zoom: 1,
       dirty: false,
       annotations: [],
-      formEdits: {}
+      formEdits: {},
+      addedTextFields: []
     });
     setPdfDoc(doc);
     setStatus(`${name} opened.`);
@@ -357,6 +362,33 @@ function App() {
     }));
   }
 
+  function addTextField(pageIndex: number, rect: Rect) {
+    const id = createId("field");
+    setFocusedAddedTextFieldId(id);
+    updateDocumentSession((current) => ({
+      ...current,
+      dirty: true,
+      addedTextFields: [
+        ...current.addedTextFields,
+        {
+          id,
+          name: nextAddedTextFieldName(current, fields),
+          pageIndex,
+          rect,
+          value: ""
+        }
+      ]
+    }));
+  }
+
+  function updateAddedTextField(fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) {
+    updateDocumentSession((current) => ({
+      ...current,
+      dirty: true,
+      addedTextFields: current.addedTextFields.map((field) => (field.id === fieldId ? { ...field, ...patch } : field))
+    }));
+  }
+
   function addSignatureAsset(asset: SignatureAsset) {
     setSignatureAssets((assets) => [asset, ...assets]);
     setSelectedSignatureAssetId(asset.id);
@@ -449,12 +481,14 @@ function App() {
           <ToolOptionsPanel
             tool={tool}
             fields={fields}
+            addedTextFields={session?.addedTextFields ?? []}
             formEdits={session?.formEdits ?? {}}
             annotationText={annotationText}
             selectedSignatureAssetId={selectedSignatureAsset?.id ?? ""}
             signatureAssets={signatureAssets}
             onAnnotationTextChange={setAnnotationText}
             onFormChange={updateFormField}
+            onAddedTextFieldChange={updateAddedTextField}
             onSelectSignatureAsset={setSelectedSignatureAssetId}
             onDeleteSignatureAsset={deleteSignatureAsset}
             onImportSignature={() => signatureInputRef.current?.click()}
@@ -577,8 +611,12 @@ function App() {
                 tool={tool}
                 annotationText={annotationText}
                 fields={fields}
+                focusedAddedTextFieldId={focusedAddedTextFieldId}
                 selectedSignatureAsset={selectedSignatureAsset}
                 onFormChange={updateFormField}
+                onAddTextField={addTextField}
+                onUpdateAddedTextField={updateAddedTextField}
+                onAddedTextFieldFocused={() => setFocusedAddedTextFieldId(null)}
                 onNeedSignature={() => setStatus("Create or select a visible signature before placing it.")}
                 onVisiblePageChange={(selectedPage) => updateSession((current) => ({ ...current, selectedPage }))}
                 onAddAnnotation={(annotation) =>
@@ -626,12 +664,14 @@ const VIRTUAL_OVERSCAN = 2;
 function ToolOptionsPanel({
   tool,
   fields,
+  addedTextFields,
   formEdits,
   annotationText,
   selectedSignatureAssetId,
   signatureAssets,
   onAnnotationTextChange,
   onFormChange,
+  onAddedTextFieldChange,
   onSelectSignatureAsset,
   onDeleteSignatureAsset,
   onImportSignature,
@@ -639,12 +679,14 @@ function ToolOptionsPanel({
 }: {
   tool: Tool;
   fields: PdfFormFieldSummary[];
+  addedTextFields: AddedTextField[];
   formEdits: Record<string, FormEdit>;
   annotationText: string;
   selectedSignatureAssetId: string;
   signatureAssets: SignatureAsset[];
   onAnnotationTextChange: (value: string) => void;
   onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
+  onAddedTextFieldChange: (fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) => void;
   onSelectSignatureAsset: (assetId: string) => void;
   onDeleteSignatureAsset: (assetId: string) => void;
   onImportSignature: () => void;
@@ -654,15 +696,31 @@ function ToolOptionsPanel({
     return (
       <div className="panel-section tool-options">
         <h2>Forms</h2>
-        {fields.length === 0 ? (
+        {fields.length === 0 && addedTextFields.length === 0 ? (
           <p className="muted">No supported form fields detected.</p>
         ) : (
           <div className="field-list">
             {fields.map((field) => (
               <FormFieldEditor key={field.name} field={field} edit={formEdits[field.name]} onChange={(value) => onFormChange(field, value)} />
             ))}
+            {addedTextFields.map((field) => (
+              <AddedTextFieldEditor
+                key={field.id}
+                field={field}
+                onChange={(value) => onAddedTextFieldChange(field.id, { value })}
+              />
+            ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (tool === "input") {
+    return (
+      <div className="panel-section tool-options">
+        <h2>Input</h2>
+        <p className="muted">Click the page to add an editable PDF text field.</p>
       </div>
     );
   }
@@ -942,8 +1000,12 @@ function VirtualizedDocument({
   tool,
   annotationText,
   fields,
+  focusedAddedTextFieldId,
   selectedSignatureAsset,
   onFormChange,
+  onAddTextField,
+  onUpdateAddedTextField,
+  onAddedTextFieldFocused,
   onNeedSignature,
   onVisiblePageChange,
   onAddAnnotation
@@ -954,8 +1016,12 @@ function VirtualizedDocument({
   tool: Tool;
   annotationText: string;
   fields: PdfFormFieldSummary[];
+  focusedAddedTextFieldId: string | null;
   selectedSignatureAsset?: SignatureAsset;
   onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
+  onAddTextField: (pageIndex: number, rect: Rect) => void;
+  onUpdateAddedTextField: (fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) => void;
+  onAddedTextFieldFocused: () => void;
   onNeedSignature: () => void;
   onVisiblePageChange: (selectedPage: number) => void;
   onAddAnnotation: (annotation: PdfAnnotation) => void;
@@ -1065,9 +1131,14 @@ function VirtualizedDocument({
               annotations={session.annotations.filter((annotation) => annotation.pageIndex === pageState.sourceIndex)}
               annotationText={annotationText}
               fields={fields}
+              addedTextFields={session.addedTextFields.filter((field) => field.pageIndex === pageState.sourceIndex)}
               formEdits={session.formEdits}
+              focusedAddedTextFieldId={focusedAddedTextFieldId}
               selectedSignatureAsset={selectedSignatureAsset}
               onFormChange={onFormChange}
+              onAddTextField={onAddTextField}
+              onUpdateAddedTextField={onUpdateAddedTextField}
+              onAddedTextFieldFocused={onAddedTextFieldFocused}
               onNeedSignature={onNeedSignature}
               onAddAnnotation={onAddAnnotation}
             />
@@ -1139,6 +1210,21 @@ function FormFieldEditor({
   );
 }
 
+function AddedTextFieldEditor({
+  field,
+  onChange
+}: {
+  field: AddedTextField;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="form-field">
+      <span>{field.name}</span>
+      <textarea value={field.value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
 function PdfPage({
   pdfDoc,
   sourcePageIndex,
@@ -1147,9 +1233,14 @@ function PdfPage({
   annotations,
   annotationText,
   fields,
+  addedTextFields,
   formEdits,
+  focusedAddedTextFieldId,
   selectedSignatureAsset,
   onFormChange,
+  onAddTextField,
+  onUpdateAddedTextField,
+  onAddedTextFieldFocused,
   onNeedSignature,
   onAddAnnotation
 }: {
@@ -1160,9 +1251,14 @@ function PdfPage({
   annotations: PdfAnnotation[];
   annotationText: string;
   fields: PdfFormFieldSummary[];
+  addedTextFields: AddedTextField[];
   formEdits: Record<string, FormEdit>;
+  focusedAddedTextFieldId: string | null;
   selectedSignatureAsset?: SignatureAsset;
   onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
+  onAddTextField: (pageIndex: number, rect: Rect) => void;
+  onUpdateAddedTextField: (fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) => void;
+  onAddedTextFieldFocused: () => void;
   onNeedSignature: () => void;
   onAddAnnotation: (annotation: PdfAnnotation) => void;
 }) {
@@ -1223,6 +1319,11 @@ function PdfPage({
   function addQuickAnnotation(event: PointerEvent<HTMLDivElement>) {
     if (tool === "select" || tool === "ink") return;
     const point = localPoint(event);
+
+    if (tool === "input") {
+      onAddTextField(sourcePageIndex, clampRectToPage({ x: point.x, y: point.y, width: 220, height: 34 }, pageSize));
+      return;
+    }
 
     if (tool === "signature") {
       if (!selectedSignatureAsset) {
@@ -1340,8 +1441,125 @@ function PdfPage({
             }
           />
         ))}
+        {addedTextFields.map((field) => (
+          <AddedTextFieldOverlay
+            key={field.id}
+            field={field}
+            pageSize={pageSize}
+            zoom={zoom}
+            focusOnMount={focusedAddedTextFieldId === field.id}
+            onFocused={onAddedTextFieldFocused}
+            onChange={(value) => onUpdateAddedTextField(field.id, { value })}
+            onCommitRect={(rect) => onUpdateAddedTextField(field.id, { rect })}
+          />
+        ))}
         {inkPoints.length > 1 && <InkPreview points={inkPoints} zoom={zoom} />}
       </div>
+    </div>
+  );
+}
+
+function AddedTextFieldOverlay({
+  field,
+  pageSize,
+  zoom,
+  focusOnMount,
+  onFocused,
+  onChange,
+  onCommitRect
+}: {
+  field: AddedTextField;
+  pageSize: { width: number; height: number };
+  zoom: number;
+  focusOnMount: boolean;
+  onFocused: () => void;
+  onChange: (value: string) => void;
+  onCommitRect: (rect: Rect) => void;
+}) {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [draftRect, setDraftRect] = useState(field.rect);
+  const activeRect = draftRect;
+
+  useEffect(() => {
+    setDraftRect(field.rect);
+  }, [field.rect]);
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+    inputRef.current?.focus();
+    onFocused();
+  }, [focusOnMount, onFocused]);
+
+  const style = {
+    left: activeRect.x * zoom,
+    top: activeRect.y * zoom,
+    width: activeRect.width * zoom,
+    height: activeRect.height * zoom
+  };
+
+  function startRectInteraction(event: PointerEvent<HTMLButtonElement>, mode: "move" | "resize") {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const origin = { x: event.clientX, y: event.clientY };
+    const initialRect = activeRect;
+
+    function onMove(pointerEvent: globalThis.PointerEvent) {
+      const dx = (pointerEvent.clientX - origin.x) / zoom;
+      const dy = (pointerEvent.clientY - origin.y) / zoom;
+      const next =
+        mode === "move"
+          ? { ...initialRect, x: initialRect.x + dx, y: initialRect.y + dy }
+          : { ...initialRect, width: initialRect.width + dx, height: initialRect.height + dy };
+      setDraftRect(clampRectToPage(next, pageSize));
+    }
+
+    function onUp(pointerEvent: globalThis.PointerEvent) {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const dx = (pointerEvent.clientX - origin.x) / zoom;
+      const dy = (pointerEvent.clientY - origin.y) / zoom;
+      const next =
+        mode === "move"
+          ? { ...initialRect, x: initialRect.x + dx, y: initialRect.y + dy }
+          : { ...initialRect, width: initialRect.width + dx, height: initialRect.height + dy };
+      const rect = clampRectToPage(next, pageSize);
+      setDraftRect(rect);
+      onCommitRect(rect);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  const stop = (event: SyntheticEvent) => event.stopPropagation();
+  const fontSize = fitTextWidgetFontSize(field.value, activeRect.width, activeRect.height);
+
+  return (
+    <div className="added-text-field pdf-form-widget" style={style} onClick={stop} onPointerDown={stop}>
+      <button
+        className="field-move-handle"
+        type="button"
+        title="Move field"
+        aria-label="Move field"
+        onPointerDown={(event) => startRectInteraction(event, "move")}
+      />
+      <textarea
+        ref={inputRef}
+        className="text-widget"
+        style={{ fontSize: fontSize * zoom }}
+        value={field.value}
+        onClick={stop}
+        onPointerDown={stop}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        className="field-resize-handle"
+        type="button"
+        title="Resize field"
+        aria-label="Resize field"
+        onPointerDown={(event) => startRectInteraction(event, "resize")}
+      />
     </div>
   );
 }
@@ -1489,6 +1707,28 @@ function pagesEqual(left: DocumentSession["pages"], right: DocumentSession["page
     const other = right[index];
     return other && page.sourceIndex === other.sourceIndex && page.rotation === other.rotation && page.deleted === other.deleted;
   });
+}
+
+function nextAddedTextFieldName(session: DocumentSession, fields: PdfFormFieldSummary[]): string {
+  const names = new Set([...fields.map((field) => field.name), ...session.addedTextFields.map((field) => field.name)]);
+  let index = session.addedTextFields.length + 1;
+  let name = `openfolio.input.${index}`;
+  while (names.has(name)) {
+    index += 1;
+    name = `openfolio.input.${index}`;
+  }
+  return name;
+}
+
+function clampRectToPage(rect: Rect, pageSize: { width: number; height: number }): Rect {
+  const width = Math.min(Math.max(rect.width, 60), pageSize.width);
+  const height = Math.min(Math.max(rect.height, 22), pageSize.height);
+  return {
+    x: Math.max(0, Math.min(rect.x, pageSize.width - width)),
+    y: Math.max(0, Math.min(rect.y, pageSize.height - height)),
+    width,
+    height
+  };
 }
 
 function fitTextWidgetFontSize(text: string, width: number, height: number): number {

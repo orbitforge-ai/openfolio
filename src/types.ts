@@ -1,5 +1,6 @@
 export type Tool =
   | "select"
+  | "input"
   | "text"
   | "highlight"
   | "ink"
@@ -62,6 +63,14 @@ export interface FormEdit {
   value: string | boolean | string[];
 }
 
+export interface AddedTextField {
+  id: string;
+  name: string;
+  pageIndex: number;
+  rect: Rect;
+  value: string;
+}
+
 export interface PageState {
   sourceIndex: number;
   rotation: number;
@@ -80,6 +89,7 @@ export interface DocumentSession {
   dirty: boolean;
   annotations: PdfAnnotation[];
   formEdits: Record<string, FormEdit>;
+  addedTextFields: AddedTextField[];
 }
 
 export interface DocumentHistorySnapshot {
@@ -88,6 +98,7 @@ export interface DocumentHistorySnapshot {
   dirty: boolean;
   annotations: PdfAnnotation[];
   formEdits: Record<string, FormEdit>;
+  addedTextFields: AddedTextField[];
 }
 
 export interface PdfFormFieldSummary {

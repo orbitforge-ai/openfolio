@@ -19,7 +19,8 @@ function makeSession(): DocumentSession {
     zoom: 1,
     dirty: false,
     annotations: [],
-    formEdits: {}
+    formEdits: {},
+    addedTextFields: []
   };
 }
 
@@ -81,6 +82,27 @@ describe("document history", () => {
     expect(redone.session.dirty).toBe(true);
     expect(redone.history.undo).toHaveLength(1);
     expect(redone.history.redo).toHaveLength(0);
+  });
+
+  it("undo and redo include added text fields", () => {
+    const result = applyDocumentEdit(makeSession(), emptyDocumentHistory(), (session) => ({
+      ...session,
+      dirty: true,
+      addedTextFields: [
+        {
+          id: "field-1",
+          name: "openfolio.input.1",
+          pageIndex: 0,
+          rect: { x: 10, y: 20, width: 120, height: 30 },
+          value: "Customer name"
+        }
+      ]
+    }));
+    const undone = undoDocumentEdit(result.session, result.history);
+    const redone = redoDocumentEdit(undone.session, undone.history);
+
+    expect(undone.session.addedTextFields).toHaveLength(0);
+    expect(redone.session.addedTextFields[0].value).toBe("Customer name");
   });
 
   it("undo and redo are no-ops with empty stacks", () => {

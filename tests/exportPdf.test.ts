@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import type { DocumentSession } from "../src/types";
-import { createInitialPages } from "../src/lib/pageOperations";
+import { createInitialPages, deletePage } from "../src/lib/pageOperations";
 import { exportPdf, exportSplitPdf } from "../src/lib/exportPdf";
 
 async function makeSession(): Promise<DocumentSession> {
@@ -28,7 +28,8 @@ async function makeSession(): Promise<DocumentSession> {
         color: "blue"
       }
     ],
-    formEdits: {}
+    formEdits: {},
+    addedTextFields: []
   };
 }
 
@@ -93,7 +94,8 @@ describe("PDF export", () => {
       formEdits: {
         name: { name: "name", type: "text", value: "After" },
         approved: { name: "approved", type: "checkbox", value: true }
-      }
+      },
+      addedTextFields: []
     };
 
     const exported = await PDFDocument.load(await exportPdf(session));
@@ -103,5 +105,65 @@ describe("PDF export", () => {
     expect(exportedName.isMultiline()).toBe(true);
     expect(exportedName.isScrollable()).toBe(false);
     expect(exportedForm.getCheckBox("approved").isChecked()).toBe(true);
+  });
+
+  it("exports added text inputs as editable PDF text fields", async () => {
+    const session = await makeSession();
+    session.addedTextFields.push({
+      id: "field-1",
+      name: "openfolio.input.1",
+      pageIndex: 0,
+      rect: { x: 40, y: 50, width: 180, height: 28 },
+      value: "Editable answer"
+    });
+
+    const exported = await PDFDocument.load(await exportPdf(session));
+    const field = exported.getForm().getTextField("openfolio.input.1");
+    const widget = field.acroField.getWidgets()[0];
+    const rect = widget.getRectangle();
+
+    expect(field.getText()).toBe("Editable answer");
+    expect(field.isMultiline()).toBe(true);
+    expect(field.isScrollable()).toBe(false);
+    expect(widget.P()?.toString()).toBe(exported.getPage(0).ref.toString());
+    expect(rect.x).toBeGreaterThanOrEqual(39);
+    expect(rect.x).toBeLessThanOrEqual(40);
+    expect(rect.y).toBeGreaterThanOrEqual(221);
+    expect(rect.y).toBeLessThanOrEqual(222);
+    expect(rect.width).toBeGreaterThanOrEqual(180);
+    expect(rect.width).toBeLessThanOrEqual(181);
+    expect(rect.height).toBeGreaterThanOrEqual(28);
+    expect(rect.height).toBeLessThanOrEqual(29);
+  });
+
+  it("exports added text inputs after page structure changes", async () => {
+    const session = await makeSession();
+    session.pages = deletePage(session.pages, 0);
+    session.addedTextFields.push(
+      {
+        id: "removed-field",
+        name: "openfolio.input.removed",
+        pageIndex: 0,
+        rect: { x: 20, y: 30, width: 120, height: 24 },
+        value: "Removed"
+      },
+      {
+        id: "kept-field",
+        name: "openfolio.input.kept",
+        pageIndex: 1,
+        rect: { x: 30, y: 40, width: 150, height: 24 },
+        value: "Kept"
+      }
+    );
+
+    const exported = await PDFDocument.load(await exportPdf(session));
+    const exportedForm = exported.getForm();
+    const keptField = exportedForm.getTextField("openfolio.input.kept");
+    const keptWidget = keptField.acroField.getWidgets()[0];
+
+    expect(exported.getPageCount()).toBe(1);
+    expect(exportedForm.getFieldMaybe("openfolio.input.removed")).toBeUndefined();
+    expect(keptField.getText()).toBe("Kept");
+    expect(keptWidget.P()?.toString()).toBe(exported.getPage(0).ref.toString());
   });
 });

@@ -1,4 +1,4 @@
-import type { DocumentHistorySnapshot, DocumentSession, FormEdit, PageState, PdfAnnotation } from "../types";
+import type { AddedTextField, DocumentHistorySnapshot, DocumentSession, FormEdit, PageState, PdfAnnotation } from "../types";
 
 export interface DocumentHistory {
   undo: DocumentHistorySnapshot[];
@@ -17,7 +17,8 @@ export function snapshotDocumentSession(session: DocumentSession): DocumentHisto
     selectedPage: session.selectedPage,
     dirty: session.dirty,
     annotations: cloneAnnotations(session.annotations),
-    formEdits: cloneFormEdits(session.formEdits)
+    formEdits: cloneFormEdits(session.formEdits),
+    addedTextFields: cloneAddedTextFields(session.addedTextFields)
   };
 }
 
@@ -28,7 +29,8 @@ export function restoreDocumentSnapshot(session: DocumentSession, snapshot: Docu
     selectedPage: snapshot.selectedPage,
     dirty: snapshot.dirty,
     annotations: cloneAnnotations(snapshot.annotations),
-    formEdits: cloneFormEdits(snapshot.formEdits)
+    formEdits: cloneFormEdits(snapshot.formEdits),
+    addedTextFields: cloneAddedTextFields(snapshot.addedTextFields)
   };
 }
 
@@ -113,4 +115,11 @@ function cloneFormEdits(formEdits: Record<string, FormEdit>): Record<string, For
       }
     ])
   );
+}
+
+function cloneAddedTextFields(fields: AddedTextField[]): AddedTextField[] {
+  return fields.map((field) => ({
+    ...field,
+    rect: { ...field.rect }
+  }));
 }
