@@ -389,6 +389,15 @@ function App() {
     }));
   }
 
+  function deleteAddedTextField(fieldId: string) {
+    if (focusedAddedTextFieldId === fieldId) setFocusedAddedTextFieldId(null);
+    updateDocumentSession((current) => ({
+      ...current,
+      dirty: true,
+      addedTextFields: current.addedTextFields.filter((field) => field.id !== fieldId)
+    }));
+  }
+
   function addSignatureAsset(asset: SignatureAsset) {
     setSignatureAssets((assets) => [asset, ...assets]);
     setSelectedSignatureAssetId(asset.id);
@@ -489,6 +498,7 @@ function App() {
             onAnnotationTextChange={setAnnotationText}
             onFormChange={updateFormField}
             onAddedTextFieldChange={updateAddedTextField}
+            onDeleteAddedTextField={deleteAddedTextField}
             onSelectSignatureAsset={setSelectedSignatureAssetId}
             onDeleteSignatureAsset={deleteSignatureAsset}
             onImportSignature={() => signatureInputRef.current?.click()}
@@ -616,6 +626,7 @@ function App() {
                 onFormChange={updateFormField}
                 onAddTextField={addTextField}
                 onUpdateAddedTextField={updateAddedTextField}
+                onDeleteAddedTextField={deleteAddedTextField}
                 onAddedTextFieldFocused={() => setFocusedAddedTextFieldId(null)}
                 onNeedSignature={() => setStatus("Create or select a visible signature before placing it.")}
                 onVisiblePageChange={(selectedPage) => updateSession((current) => ({ ...current, selectedPage }))}
@@ -672,6 +683,7 @@ function ToolOptionsPanel({
   onAnnotationTextChange,
   onFormChange,
   onAddedTextFieldChange,
+  onDeleteAddedTextField,
   onSelectSignatureAsset,
   onDeleteSignatureAsset,
   onImportSignature,
@@ -687,6 +699,7 @@ function ToolOptionsPanel({
   onAnnotationTextChange: (value: string) => void;
   onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
   onAddedTextFieldChange: (fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) => void;
+  onDeleteAddedTextField: (fieldId: string) => void;
   onSelectSignatureAsset: (assetId: string) => void;
   onDeleteSignatureAsset: (assetId: string) => void;
   onImportSignature: () => void;
@@ -708,6 +721,7 @@ function ToolOptionsPanel({
                 key={field.id}
                 field={field}
                 onChange={(value) => onAddedTextFieldChange(field.id, { value })}
+                onDelete={() => onDeleteAddedTextField(field.id)}
               />
             ))}
           </div>
@@ -1005,6 +1019,7 @@ function VirtualizedDocument({
   onFormChange,
   onAddTextField,
   onUpdateAddedTextField,
+  onDeleteAddedTextField,
   onAddedTextFieldFocused,
   onNeedSignature,
   onVisiblePageChange,
@@ -1021,6 +1036,7 @@ function VirtualizedDocument({
   onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
   onAddTextField: (pageIndex: number, rect: Rect) => void;
   onUpdateAddedTextField: (fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) => void;
+  onDeleteAddedTextField: (fieldId: string) => void;
   onAddedTextFieldFocused: () => void;
   onNeedSignature: () => void;
   onVisiblePageChange: (selectedPage: number) => void;
@@ -1138,6 +1154,7 @@ function VirtualizedDocument({
               onFormChange={onFormChange}
               onAddTextField={onAddTextField}
               onUpdateAddedTextField={onUpdateAddedTextField}
+              onDeleteAddedTextField={onDeleteAddedTextField}
               onAddedTextFieldFocused={onAddedTextFieldFocused}
               onNeedSignature={onNeedSignature}
               onAddAnnotation={onAddAnnotation}
@@ -1212,16 +1229,23 @@ function FormFieldEditor({
 
 function AddedTextFieldEditor({
   field,
-  onChange
+  onChange,
+  onDelete
 }: {
   field: AddedTextField;
   onChange: (value: string) => void;
+  onDelete: () => void;
 }) {
   return (
-    <label className="form-field">
-      <span>{field.name}</span>
-      <textarea value={field.value} onChange={(event) => onChange(event.target.value)} />
-    </label>
+    <div className="added-field-editor">
+      <label className="form-field">
+        <span>{field.name}</span>
+        <textarea value={field.value} onChange={(event) => onChange(event.target.value)} />
+      </label>
+      <button className="icon-button" onClick={onDelete} title={`Delete ${field.name}`}>
+        <Trash2 size={15} />
+      </button>
+    </div>
   );
 }
 
@@ -1240,6 +1264,7 @@ function PdfPage({
   onFormChange,
   onAddTextField,
   onUpdateAddedTextField,
+  onDeleteAddedTextField,
   onAddedTextFieldFocused,
   onNeedSignature,
   onAddAnnotation
@@ -1258,6 +1283,7 @@ function PdfPage({
   onFormChange: (field: PdfFormFieldSummary, value: FormEdit["value"]) => void;
   onAddTextField: (pageIndex: number, rect: Rect) => void;
   onUpdateAddedTextField: (fieldId: string, patch: Partial<Pick<AddedTextField, "rect" | "value">>) => void;
+  onDeleteAddedTextField: (fieldId: string) => void;
   onAddedTextFieldFocused: () => void;
   onNeedSignature: () => void;
   onAddAnnotation: (annotation: PdfAnnotation) => void;
@@ -1451,6 +1477,7 @@ function PdfPage({
             onFocused={onAddedTextFieldFocused}
             onChange={(value) => onUpdateAddedTextField(field.id, { value })}
             onCommitRect={(rect) => onUpdateAddedTextField(field.id, { rect })}
+            onDelete={() => onDeleteAddedTextField(field.id)}
           />
         ))}
         {inkPoints.length > 1 && <InkPreview points={inkPoints} zoom={zoom} />}
@@ -1466,7 +1493,8 @@ function AddedTextFieldOverlay({
   focusOnMount,
   onFocused,
   onChange,
-  onCommitRect
+  onCommitRect,
+  onDelete
 }: {
   field: AddedTextField;
   pageSize: { width: number; height: number };
@@ -1475,6 +1503,7 @@ function AddedTextFieldOverlay({
   onFocused: () => void;
   onChange: (value: string) => void;
   onCommitRect: (rect: Rect) => void;
+  onDelete: () => void;
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [draftRect, setDraftRect] = useState(field.rect);
@@ -1544,6 +1573,19 @@ function AddedTextFieldOverlay({
         aria-label="Move field"
         onPointerDown={(event) => startRectInteraction(event, "move")}
       />
+      <button
+        className="field-delete-handle"
+        type="button"
+        title="Delete field"
+        aria-label="Delete field"
+        onPointerDown={stop}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
+      >
+        <Trash2 size={11} />
+      </button>
       <textarea
         ref={inputRef}
         className="text-widget"

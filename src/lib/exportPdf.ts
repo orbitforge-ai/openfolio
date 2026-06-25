@@ -117,7 +117,6 @@ function applyAddedTextFields(
       height,
       textColor: rgb(0.06, 0.09, 0.16),
       borderColor: rgb(0.15, 0.39, 0.92),
-      backgroundColor: rgb(1, 1, 1),
       borderWidth: 1
     });
     field.setFontSize(fitTextFieldFontSize(addedField));

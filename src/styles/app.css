@@ -337,7 +337,7 @@ textarea {
   z-index: 4;
   border: 1px solid rgba(37, 99, 235, 0.58);
   border-radius: 2px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.38);
   color: #0f172a;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.52);
 }
@@ -394,6 +394,7 @@ textarea {
 }
 
 .field-move-handle,
+.field-delete-handle,
 .field-resize-handle {
   position: absolute;
   z-index: 2;
@@ -411,6 +412,15 @@ textarea {
   height: 14px;
   border-radius: 50%;
   cursor: move;
+}
+
+.field-delete-handle {
+  top: -7px;
+  right: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  color: #dc2626;
 }
 
 .field-resize-handle {
@@ -469,6 +479,13 @@ textarea {
 .field-list {
   display: grid;
   gap: 10px;
+}
+
+.added-field-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: start;
 }
 
 .form-field {
